@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Mini Balatro ****</title>
+    <title>Mini Balatro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -237,7 +237,7 @@
                 const result = evaluateHand(selectedCards);
                 const playCount = handCounts[result.type] || 0;
                 const multiplier = getMultiplier(result.type, playCount);
-                const points = Math.floor(result.multiplier * result.points);
+                const points = Math.floor(multiplier * result.points);
 
                 setHandCounts(prev => ({
                     ...prev,
@@ -266,14 +266,18 @@
 
             function discardSelected() {
                 if (selected.length === 0 || selected.length > 3) return;
+                
+                let currentDeck = [...deck];
                 const newHand = hand.filter((_, i) => !selected.includes(i));
                 
                 while (newHand.length < 8) {
-                    if (deck.length === 0) setDeck(createDeck());
-                    newHand.push(deck[0]);
-                    setDeck(prev => prev.slice(1));
+                    if (currentDeck.length === 0) {
+                        currentDeck = createDeck();
+                    }
+                    newHand.push(currentDeck.shift());
                 }
                 
+                setDeck(currentDeck);
                 setHand(sortCards(newHand));
                 setSelected([]);
                 setDiscardsLeft(prev => prev - 1);
