@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mini Balatro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            display: inline-block;
+            background: #fff;
+            color: #000;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            min-width: 30px;
+            text-align: center;
+            user-select: none;
+        }
+        .card.selected {
+            background: #4CAF50;
+            color: white;
+        }
+        .card.hearts, .card.diamonds {
+            color: red;
+        }
+        button {
+            background: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .stats {
+            margin: 20px 0;
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .multipliers {
+            margin: 20px 0;
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+            display: none;
+        }
+        .multipliers.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const suits = {
+            HEARTS: "♥",
+            DIAMONDS: "♦",
+            CLUBS: "♣",
+            SPADES: "♠"
+        };
+
+        const ranks = {
+            TWO: "2", THREE: "3", FOUR: "4", FIVE: "5",
+            SIX: "6", SEVEN: "7", EIGHT: "8", NINE: "9",
+            TEN: "10", JACK: "J", QUEEN: "Q", KING: "K", ACE: "A"
+        };
+
+        const rankValues = {
+            "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
+            "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14
+        };
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function createDeck() {
+            const deck = [];
+            Object.values(suits).forEach(suit => {
+                Object.values(ranks).forEach(rank => {
+                    deck.push({ rank, suit });
+                });
+            });
+            return shuffle(deck);
+        }
+
+        function Card({ card, selected, onClick }) {
+            const suitClass = card.suit === "♥" || card.suit === "♦" ? 
+                            "hearts" : "spades";
+            return (
+                <div 
+                    className={`card ${suitClass} ${selected ? 'selected' : ''}`}
+                    onClick={onClick}
+                >
+                    {card.rank}{card.suit}
+                </div>
+            );
+        }
+
+        function Game() {
+            const [deck, setDeck] = React.useState(createDeck());
+            const [hand, setHand] = React.useState([]);
+            const [selected, setSelected] = React.useState([]);
+            const [score, setScore] = React.useState(0);
+            const [roundScore, setRoundScore] = React.useState(0);
+            const [playsLeft, setPlaysLeft] = React.useState(3);
+            const [discardsLeft, setDiscardsLeft] = React.useState(3);
+            const [showMultipliers, setShowMultipliers] = React.useState(false);
+            const [handCounts, setHandCounts] = React.useState({});
+            const [sortBySuit, setSortBySuit] = React.useState(false);
+
+            React.useEffect(() => {
+                drawHand();
+            }, []);
+
+            function drawHand() {
+                if (deck.length < 8) {
+                    setDeck(createDeck());
+                }
+                const newHand = deck.slice(0, 8);
+                setDeck(deck.slice(8));
+                setHand(sortCards(newHand));
+                setSelected([]);
+            }
+
+            function sortCards(cards) {
+                return [...cards].sort((a, b) => {
+                    if (sortBySuit) {
+                        if (a.suit !== b.suit) return a.suit.localeCompare(b.suit);
+                        return rankValues[a.rank] - rankValues[b.rank];
+                    }
+                    if (rankValues[a.rank] !== rankValues[b.rank]) 
+                        return rankValues[a.rank] - rankValues[b.rank];
+                    return a.suit.localeCompare(b.suit);
+                });
+            }
+
+            function toggleCard(index) {
+                const newSelected = [...selected];
+                const pos = newSelected.indexOf(index);
+                if (pos === -1) {
+                    if (newSelected.length < 5) newSelected.push(index);
+                } else {
+                    newSelected.splice(pos, 1);
+                }
+                setSelected(newSelected);
+            }
+
+            function evaluateHand(cards) {
+                if (cards.length < 1 || cards.length > 5) return { type: "INVALID", points: 0 };
+                if (cards.length < 5) return { type: "HIGH_CARD", points: Math.max(...cards.map(c => rankValues[c.rank])) };
+                
+                // Full evaluation for 5 cards
+                const values = cards.map(c => rankValues[c.rank]).sort((a,b) => a-b);
+                const suits = new Set(cards.map(c => c.suit));
+                const isFlush = suits.size === 1;
+                const isStraight = values[4] - values[0] === 4;
+                
+                // Count values
+                const valueCounts = {};
+                values.forEach(v => valueCounts[v] = (valueCounts[v] || 0) + 1);
+                const counts = Object.values(valueCounts).sort((a,b) => b-a);
+
+                if (isFlush && isStraight && values[4] === 14) return { type: "ROYAL_FLUSH", points: 100 };
+                if (isFlush && isStraight) return { type: "STRAIGHT_FLUSH", points: 75 };
+                if (counts[0] === 4) return { type: "FOUR_OF_KIND", points: 50 };
+                if (counts[0] === 3 && counts[1] === 2) return { type: "FULL_HOUSE", points: 25 };
+                if (isFlush) return { type: "FLUSH", points: 20 };
+                if (isStraight) return { type: "STRAIGHT", points: 15 };
+                if (counts[0] === 3) return { type: "THREE_OF_KIND", points: 10 };
+                if (counts[0] === 2 && counts[1] === 2) return { type: "TWO_PAIR", points: 5 };
+                if (counts[0] === 2) return { type: "PAIR", points: 2 };
+                return { type: "HIGH_CARD", points: values[4] };
+            }
+
+            function playHand() {
+                if (selected.length === 0) return;
+                const selectedCards = selected.map(i => hand[i]);
+                const result = evaluateHand(selectedCards);
+                const multiplier = 1 + (handCounts[result.type] || 0) * 0.1;
+                const points = Math.floor(result.points * multiplier);
+                
+                setHandCounts(prev => ({
+                    ...prev,
+                    [result.type]: (prev[result.type] || 0) + 1
+                }));
+                
+                setRoundScore(prev => prev + points);
+                setPlaysLeft(prev => prev - 1);
+                drawHand();
+                
+                alert(`Played ${result.type}!\nBase points: ${result.points}\nMultiplier: ${multiplier.toFixed(1)}x\nTotal points: ${points}`);
+                
+                if (playsLeft === 1 && discardsLeft === 0) {
+                    setScore(prev => prev + roundScore);
+                    setRoundScore(0);
+                    setPlaysLeft(3);
+                    setDiscardsLeft(3);
+                    alert("Round complete! Starting new round.");
+                }
+            }
+
+            function discardSelected() {
+                if (selected.length === 0 || selected.length > 3) return;
+                const newHand = hand.filter((_, i) => !selected.includes(i));
+                while (newHand.length < 8) {
+                    if (deck.length === 0) setDeck(createDeck());
+                    newHand.push(deck[0]);
+                    setDeck(deck.slice(1));
+                }
+                setHand(sortCards(newHand));
+                setSelected([]);
+                setDiscardsLeft(prev => prev - 1);
+            }
+
+            return (
+                <div>
+                    <div className="stats">
+                        <h2>Mini Balatro</h2>
+                        <p>Total Score: {score}</p>
+                        <p>Round Score: {roundScore}</p>
+                        <p>Plays left: {playsLeft}</p>
+                        <p>Discards left: {discardsLeft}</p>
+                    </div>
+                    
+                    <div>
+                        {hand.map((card, i) => (
+                            <Card 
+                                key={i}
+                                card={card}
+                                selected={selected.includes(i)}
+                                onClick={() => toggleCard(i)}
+                            />
+                        ))}
+                    </div>
+                    
+                    <div>
+                        <button 
+                            onClick={playHand} 
+                            disabled={selected.length === 0 || playsLeft === 0}
+                        >
+                            Play Hand ({selected.length}/5 cards)
+                        </button>
+                        <button 
+                            onClick={discardSelected} 
+                            disabled={selected.length === 0 || selected.length > 3 || discardsLeft === 0}
+                        >
+                            Discard Selected ({selected.length}/3 max)
+                        </button>
+                        <button onClick={() => setShowMultipliers(!showMultipliers)}>
+                            {showMultipliers ? 'Hide' : 'Show'} Multipliers
+                        </button>
+                        <button onClick={() => {
+                            setSortBySuit(!sortBySuit);
+                            setHand(prev => sortCards(prev));
+                        }}>
+                            Sort by {sortBySuit ? 'Rank' : 'Suit'}
+                        </button>
+                    </div>
+
+                    <div className={`multipliers ${showMultipliers ? 'show' : ''}`}>
+                        <h3>Hand Multipliers:</h3>
+                        {Object.entries(handCounts).map(([type, count]) => (
+                            <div key={type}>
+                                {type}: {(1 + count * 0.1).toFixed(1)}x (played {count} times)
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Game />);
+    </script>
+</body>
+</html>
